@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>サークル参加回数グラフ</title>
+    <!-- Chart.jsのCDNを読み込み -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- スクロール用のスタイルを追加 -->
+    <style>
+        /* グラフをスクロール可能にするためのスタイル */
+        .chart-container {
+            width: 100%;
+            overflow-x: auto; /* 横スクロールを許可 */
+            overflow-y: hidden; /* 縦スクロールは非表示 */
+            padding: 10px 0; /* 上下に少し余白を追加 */
+            white-space: nowrap; /* コンテンツを横に並べる */
+        }
+        canvas {
+            display: inline-block; /* キャンバスをインラインブロックにする */
+        }
+    </style>
+</head>
+<body>
+    <h1>サークル参加回数</h1>
+    <!-- グラフを表示するためのキャンバスをスクロール可能なコンテナでラップ -->
+    <div class="chart-container">
+        <canvas id="myChart"></canvas>
+    </div>
+
+    <h2>最終日の男女比</h2>
+    <div class="chart-container">
+        <canvas id="genderChart"></canvas>
+    </div>
+
+    <!-- PapaParseのCDNを読み込み（CSV解析用） -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+    
+    <!-- CSVを読み込んでグラフを描画するJavaScriptコード -->
+    <script>
+        // CSVファイルを読み込む関数
+        function loadCSV(url, callback) {
+            Papa.parse(url, {
+                download: true,
+                encoding: "UTF-8", // UTF-8で読み込む
+                complete: function(results) {
+                    callback(results.data);
+                }
+            });
+        }
+
+        // CSVのデータを処理してグラフを描画する関数
+        function processCSVData(data) {
+            const members = data.slice(3, 39).map(row => row[11]); // L列からメンバー名を取得（4〜39行）
+            const participationCounts = members.map(() => 0); // 参加回数の配列を初期化
+
+            // 参加回数を計算
+            for (let i = 3; i < 39; i++) {
+                const row = data[i];
+                for (let j = 12; j <= 45; j++) { // M列からAT列の範囲（インデックス12から45）
+                    if (row[j] === '1') {
+                        participationCounts[i - 3]++; // 参加回数をカウント
+                    }
+                }
+            }
+
+            // 参加回数が多い順に並べ替え
+            const combinedData = members.map((member, index) => ({ member, count: participationCounts[index] }));
+            combinedData.sort((a, b) => b.count - a.count); // 参加回数が多い順に並べ替え
+
+            const sortedMembers = combinedData.map(item => item.member);
+            const sortedCounts = combinedData.map(item => item.count);
+
+            // グラフを描画
+            drawChart(sortedMembers, sortedCounts);
+            drawGenderChart(data);
+        }
+
+        // グラフを描画する関数
+        function drawChart(labels, data) {
+            const ctx = document.getElementById('myChart').getContext('2d');
+
+            // グラフの幅を動的に設定
+            const canvasWidth = Math.max(800, labels.length * 30); // ラベルの数に応じて幅を調整
+            document.getElementById('myChart').width = canvasWidth;
+
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: '参加回数',
+                        data: data,
+                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        borderWidth: 1,
+                        barThickness: 20, // 棒の厚さを設定
+                        barPercentage: 0.8, // 棒の幅の割合を設定
+                        categoryPercentage: 0.9 // 棒の間隔を調整
+                    }]
+                },
+                options: {
+                    responsive: false, // サイズ変更に反応しない
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            ticks: {
+                                maxRotation: 90, // X軸ラベルの最大回転角度
+                                minRotation: 45, // X軸ラベルの最小回転角度
+                                autoSkip: false // ラベルのスキップを無効にする
+                            },
+                            grid: {
+                                display: false // X軸のグリッドを非表示にする
+                            }
+                        },
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+
+        // 最終日の男女比を描画する関数
+        function drawGenderChart(data) {
+            const lastRow = data[data.length - 1]; // 最終行
+            const genders = { 男性: 0, 女性: 0 };
+
+            // E列の性別データを集計
+            for (let i = 3; i < 39; i++) {
+                const gender = lastRow[i];
+                if (gender === '男性' || gender === '女性') {
+                    genders[gender]++;
+                }
+            }
+
+            // グラフを描画
+            const ctx = document.getElementById('genderChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: ['男性', '女性'],
+                    datasets: [{
+                        data: [genders.男性, genders.女性],
+                        backgroundColor: ['rgba(54, 162, 235, 0.2)', 'rgba(255, 99, 132, 0.2)'],
+                        borderColor: ['rgba(54, 162, 235, 1)', 'rgba(255, 99, 132, 1)'],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            position: 'top'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(tooltipItem) {
+                                    return tooltipItem.label + ': ' + tooltipItem.raw;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // CSVファイルを読み込み、データを処理
+        loadCSV('TIPS_members.csv', processCSVData);
+    </script>
+</body>
+</html>
